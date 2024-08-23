@@ -2,16 +2,32 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const cors = require('cors'); // Import CORS middleware
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: 'http://192.168.172.177:4200', // Replace with your Angular app's origin
+        methods: ['GET', 'POST'],
+        allowedHeaders: ['Content-Type'],
+        credentials: true,
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 
+// Use CORS middleware
+app.use(cors({
+    origin: 'http://192.168.172.177:4200', // Replace with your Angular app's origin
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true,
+}));
+
 // Serve static files
 app.use(express.static('public'));
-
+app.use(express.json());
 // Store room configurations
 const rooms = {};
 
@@ -46,6 +62,21 @@ app.get('/create-room', (req, res) => {
     res.json({ roomId });
 });
 
+app.post('/join-room', (req, res) => {
+    const { roomId, userName } = req.body;
+    const room = rooms[roomId];
+
+    if (!room) {
+        return res.status(404).json({ message: 'Room not found' });
+    }
+
+    if (room.users.length >= room.roomSize) {
+        return res.status(400).json({ message: 'Room is full' });
+    }
+
+    res.status(200).json({ message: `${userName} Joined room successfully` });
+});
+
 // Route to join an existing room
 io.on('connection', (socket) => {
     socket.on('joinRoom', ({ roomId, userName }) => {
@@ -69,7 +100,7 @@ io.on('connection', (socket) => {
 
         // Broadcast to all users in the room, including the one who just joined
         io.in(roomId).emit('userJoined', { userName });
-       // io.to(roomId).emit('getUsersInRoom', room.users.map(user => ({ userName: user })));
+        // io.to(roomId).emit('getUsersInRoom', room.users.map(user => ({ userName: user })));
 
         // Handle bidding
         socket.on('placeBid', ({ bid, player }) => {
